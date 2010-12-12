@@ -1,0 +1,76 @@
+<?php
+// $Id$
+
+/**
+ * @file
+ * Back button install file.
+ */
+
+/**
+ * Implementation of hook_install().
+ */
+function back_button_install() {
+  drupal_install_schema('back_button');
+}
+
+function back_button_schema() {
+  $schema['back_button'] = array(
+    'description' => 'Stores data for Back Button module.',
+    'fields' => array(
+      'bid' => array(
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'description' => 'Unique identifier for the {back_button}.',
+      ),
+      'button_title' => array(
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => 'The visible title of the {back_button}.',
+      ),
+      'button_view' => array(
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => 'The name of the view used for this {custom_pager}.',
+      ),
+      'button_node_type' => array(
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => 'A specific node type this {back_button} should be displayed with.',
+      ),
+      'button_anchor' => array(
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => 'Template for anchor for {back_button}.',
+      ),
+      'button_text' => array(
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => 'Button text.',
+      ),
+      'button_show_links' => array(
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => 'Show button in node links?',
+      ),
+    ),
+    'primary key' => array('bid'),
+  );
+  return $schema;
+}
+
+function back_button_uninstall() {
+  drupal_uninstall_schema('back_button');
+}

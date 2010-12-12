@@ -1,0 +1,326 @@
+<?php
+// $Id$
+
+function back_button_get_link($bid, $nid) {
+  $link = array();
+  $button = db_fetch_object(db_query("SELECT * FROM {back_button} WHERE bid = %d", $bid));
+  $node = node_load($nid);
+
+  if (is_object($button)) {
+    list($view_name, $view_display) = explode("-", $button->button_view);
+    $view = views_get_view($view_name);  
+    $view->set_display($view_display);
+
+    $pager = $view->display_handler->get_option('items_per_page');
+    if ($pager > 0) {
+      $view->display_handler->set_option('items_per_page', 0);
+      $view->display_handler->set_option('style_plugin', 'custom_pagers_php_array');
+      $view->execute($view_display);
+
+      $k = 0;
+
+      foreach ($view->result as $k => $v) {
+        if ($v->nid == $nid) {
+          break;
+        }
+      }
+
+      $page = floor($k / $pager);
+
+      $link = array(
+        "href" => $view->display_handler->get_option("path"),
+        "fragment" => token_replace($button->button_anchor, 'node', $node),
+        "title" => $button->button_text,
+        "query" => "page=". $page,
+      );
+    } 
+    else {
+      $link = array(
+        "href" => $view->display_handler->get_option("path"),
+        "fragment" => token_replace($button->button_anchor, 'node', $node),
+        "title" => $button->button_text,
+        "query" => "",
+      );
+    }
+
+    return $link;
+  }
+}
+
+
+function back_button_link($type, $node = NULL, $teaser = NULL) {
+  $links = array();
+
+  if ($type == 'node' && is_object($node) && !$teaser) {
+    $button = db_fetch_object(db_query('SELECT * FROM {back_button} where button_node_type = "%s"', $node->type));
+
+    if (is_object($button) && $button->button_show_links) {
+      $link = back_button_get_link($button->bid, $node->nid);
+      if (is_array($link)) {
+        $links['back_button_link'] = $link;
+      }
+    }
+  }
+
+  return $links;
+}
+
+function back_button_perm() {
+  return array(
+    "configure back button settings",
+  );
+}
+
+function back_button_menu() {
+  $items = array();
+
+  $items['admin/settings/back-button'] = array(
+    'title' => 'Back Button configuration',
+    'page callback' => 'back_button_configuration',
+    'access arguments' => array('configure back button settings'),
+  );
+
+  $items['admin/settings/back-button/list'] = array(
+    'title' => 'Back Button configuration',
+    'type' => MENU_DEFAULT_LOCAL_TASK,
+    'weight' => -10,
+  );
+
+  $items['admin/settings/back-button/add'] = array(
+    'title' => 'Add Back Button',
+    'page callback' => 'back_button_add',
+    'access arguments' => array('configure back button settings'),
+    'type' => MENU_LOCAL_TASK,
+  );
+
+  $items['admin/settings/back-button/edit/%'] = array(
+    'title' => 'Edit Back Button',
+    'page callback' => 'back_button_edit',
+    'page arguments' => array(4),
+    'access arguments' => array('configure back button settings'),
+  );
+
+  $items['admin/settings/back-button/delete/%'] = array(
+    'title' => 'Delete Back Button',
+    'page callback' => 'back_button_delete',
+    'page arguments' => array(4),
+    'access arguments' => array('configure back button settings'),
+  );
+
+  return $items;
+}
+
+function back_button_theme($existing, $type, $theme, $path) {
+  return array(
+    'back_button_config_list' => array(
+      'arguments' => array('list' => NULL),
+    ),
+    'back_button_link_render' => array(
+      'arguments' => array('link' => NULL),
+    ),
+  );
+}
+
+function back_button_configuration() {
+  $req = db_query('SELECT * FROM {back_button} ORDER BY bid');
+  $rows = array();
+  while ($r = db_fetch_object($req)) {
+    $row = array(
+      $r->bid,
+      $r->button_title,
+      l(t("Edit"), "admin/settings/back-button/edit/". $r->bid),
+      l(t("Delete"), "admin/settings/back-button/delete/". $r->bid),
+    );
+    $rows[] = $row;
+  }
+
+  return theme("back_button_config_list", $rows);
+}
+
+
+function back_button_add() {
+  return drupal_get_form("back_button_form");
+}
+
+function back_button_edit($bid) {
+  return drupal_get_form("back_button_form", $bid);
+}
+
+function back_button_delete($bid) {
+  return drupal_get_form("back_button_delete_form", $bid);
+}
+
+function back_button_delete_form($form_state, $bid) {
+  $form = array();
+
+  $form['bid'] = array(
+    "#type" => "hidden",
+    "#value" => $bid,
+  );
+
+  return confirm_form(
+    $form,
+    t("Are you sure you want to delete this Back Button?"),
+    "admin/settings/back-button"
+  );
+}
+
+function back_button_delete_form_submit($form, &$form_state) {
+  db_query("DELETE FROM {back_button} WHERE bid = %d", $form_state['values']['bid']);
+  drupal_set_message( t("Button deleted successfully.") );
+  drupal_goto("admin/settings/back-button");
+}
+
+
+function back_button_form($form_state, $bid = NULL) {
+  $form = array();
+
+  $form['bid'] = array(
+    '#type' => 'hidden',
+    '#value' => $bid,
+  );
+
+  $form['button_title'] = array(
+    '#type' => 'textfield',
+    '#title' => t("Title"),
+    '#required' => TRUE,
+  );
+
+  $form['button_node_type'] = array(
+    '#type' => 'select',
+    '#options' => node_get_types("names"),
+    '#title' => t("Node type"),
+    '#required' => TRUE,
+  );
+
+  $views_options = array();
+  $views = views_get_applicable_views("uses hook menu");
+  foreach ($views as $view) {
+    $view_name = $view[0]->name;
+    foreach($view[0]->display as $id => $display) {
+      $views_options[$view_name ."-". $id] = $view[0]->description ." - ". $display->display_title;
+    }
+  }
+
+  $form['button_view'] = array(
+    '#type' => 'select',
+    '#options' => $views_options,
+    '#title' => t("View"),
+    '#required' => TRUE,
+  );
+
+  $form['button_anchor'] = array(
+    '#type' => 'textfield',
+    '#title' => t("Anchor template"),
+    '#required' => TRUE,
+  );
+
+  $form['help'] = array(
+    '#type' => 'fieldset',
+    '#collapsible' => TRUE,
+    '#collapsed' => TRUE,
+    '#title' => t('Placeholder tokens'),
+    '#description' => t("The following placeholder tokens can be used for anchor template."),
+  );
+
+  $form['help']['tokens'] = array(
+    '#value' => theme('token_help', 'node'),
+  );
+
+  $form['button_text'] = array(
+    '#type' => 'textfield',
+    '#title' => t("Button text"),
+    '#required' => TRUE,
+  );
+
+  $form['button_checkbox'] = array(
+    '#type' => 'checkbox',
+    '#title' => t("Show button in node links?"),
+    '#description' => t("
+      <p>If you do not want to show back button in node links you can place this code in your
+      custom <strong>node.tpl.php</strong>:</p>
+      <code>
+        print theme('back_button_link_render', back_button_get_link([BUTTON ID], \$node->nid));
+      </code>
+    "),
+  );
+
+  $form['submit'] = array(
+    '#type' => 'submit',
+    '#value' => t("Save"),
+  );
+
+  if ($bid) {
+    $button = db_fetch_object(db_query("SELECT * FROM {back_button} WHERE bid = %d", $bid));
+    $form['button_node_type']['#default_value'] = $button->button_node_type;
+    $form['button_title']['#default_value'] = $button->button_title;
+    $form['button_view']['#default_value'] = $button->button_view;
+    $form['button_anchor']['#default_value'] = $button->button_anchor;
+    $form['button_text']['#default_value'] = $button->button_text;
+    $form['button_checkbox']['#default_value'] = $button->button_show_links;
+  }
+  else {
+    $form['button_anchor']['#default_value'] = "node-[nid]";
+    $form['button_text']['#default_value'] = t("Back");
+    $form['button_checkbox']['#default_value'] = TRUE;
+  }
+
+  return $form;
+}
+
+
+function back_button_form_submit($form, &$form_state) {
+  if (! $form_state['values']['bid']) {
+    db_query(
+      "INSERT INTO {back_button} 
+       (button_title, button_node_type, button_view, button_anchor, button_text, button_show_links) 
+       VALUES ('%s', '%s', '%s', '%s', '%s', '%s')", 
+       $form_state['values']['button_title'], 
+       $form_state['values']['button_node_type'], 
+       $form_state['values']['button_view'], 
+       $form_state['values']['button_anchor'],
+       $form_state['values']['button_text'],
+       $form_state['values']['button_checkbox']
+    );
+
+    drupal_set_message(t("New back button added."));
+  }
+  else {
+    db_query(
+      "UPDATE {back_button} SET button_title = '%s', button_node_type = '%s', 
+       button_view = '%s', button_anchor = '%s', button_text = '%s', button_show_links = '%s' WHERE bid = %d", 
+       $form_state['values']['button_title'], 
+       $form_state['values']['button_node_type'], 
+       $form_state['values']['button_view'], 
+       $form_state['values']['button_anchor'],
+       $form_state['values']['button_text'],
+       $form_state['values']['button_checkbox'],
+       $form_state['values']['bid']
+    );
+
+    drupal_set_message(t("Back button updated."));
+  }
+
+  drupal_goto("admin/settings/back-button");
+}
+
+
+function theme_back_button_config_list($list) {
+  $header = array("ID", "Title", "", "");
+  $output = theme("table", $header, $list);
+  return $output;
+}
+
+function theme_back_button_link_render($link) {
+  return l( 
+    t($link['title']), 
+    $link['href'], 
+    array(
+      'attributes' => array(
+        'class' => 'back-button-link'
+      ),
+      'query' => $link['query'],
+      'fragment' => $link['fragment'],
+    ) 
+  );
+}
