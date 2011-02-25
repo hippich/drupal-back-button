@@ -1,4 +1,3 @@
-; $Id$
 name = Back Button
 description = Provides "Back" button for nodes allowing user to get back to view set on correct page.
 core = 6.x

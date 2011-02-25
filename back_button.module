@@ -1,5 +1,4 @@
 <?php
-// $Id$
 
 function back_button_get_link($bid, $nid) {
   $link = array();
